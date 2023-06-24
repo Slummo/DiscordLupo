@@ -1,0 +1,32 @@
+{
+  "name": "lupo---discord-music-bot",
+  "version": "1.0.0",
+  "description": "A simple discord music bot",
+  "main": "main.js",
+  "scripts": {
+    "start": "node src/main.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Slummo/Lupo---Discord-music-bot.git"
+  },
+  "author": "Marchisio Luca",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Slummo/Lupo---Discord-music-bot/issues"
+  },
+  "homepage": "https://github.com/Slummo/Lupo---Discord-music-bot#readme",
+  "dependencies": {
+    "@discordjs/voice": "^0.16.0",
+    "discord.js": "^14.11.0",
+    "ffmpeg-static": "^5.1.0",
+    "fs": "^0.0.1-security",
+    "http": "^0.0.1-security",
+    "libsodium-wrappers": "^0.7.11",
+    "play-dl": "^1.9.6",
+    "ytsr": "^3.8.2"
+  },
+  "devDependencies": {
+    "dotenv": "^16.3.1"
+  }
+}

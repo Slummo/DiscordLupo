@@ -1,0 +1,36 @@
+{
+    "name": "Lupo",
+    "prefix": "?",
+    "help": {
+        "play <name>": [
+            "Cerca il titolo di un contenuto e riproduce il primo risultato.",
+            "Se una canzone è già stata aggiunta, indipendetemente dal fatto che stia",
+            "venendo riprodotta, aggiunge il risultato alla coda."
+        ],
+        "play-c <name>": [
+            "'play-choose' mostra i primi 5 risultati della ricerca e riproduce",
+            "il contenuto scelto tramite la reazione."
+        ],
+        "play-u <url>": [
+            "'play-url' riproduce il contenuto corrispondente all'URL fornito."
+        ],
+        "np": [
+            "'now playing' mostra quale contenuto sta venendo riprodotto."
+        ],
+        "pause": [
+            "Mette in pausa la riproduzione di contenuti."
+        ],
+        "unpause": [
+            "Riprende la riproduzione di contenuti."
+        ],
+        "skip": [
+            "Passa al contenuto succesivo."
+        ],
+        "queue": [
+            "Mostra la coda dei contenuti in ordine."
+        ],
+        "leave": [
+            "Fa uscire il bot dal canale vocale."
+        ]
+    }
+}
