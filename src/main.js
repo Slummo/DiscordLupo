@@ -1,6 +1,5 @@
 //TODO rewrite logic (keeping track of songs, queue ecc...)
 //TODO add back command
-//TODO add lyrics command
 //TODO add Spotify links support for both songs and playlists (search module) https://developer.spotify.com/dashboard
 //TODO add shuffle and jump commands for queueing songs
 
