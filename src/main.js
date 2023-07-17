@@ -1,5 +1,6 @@
 //TODO rewrite logic (keeping track of songs, queue ecc...)
 //TODO add back command
+//TODO add lyrics command
 //TODO add Spotify links support for both songs and playlists (search module) https://developer.spotify.com/dashboard
 //TODO add shuffle and jump commands for queueing songs
 
@@ -7,42 +8,47 @@ const {
     AudioPlayerStatus,
     NoSubscriberBehavior,
     VoiceConnectionStatus,
-    createAudioPlayer
+    createAudioPlayer,
 } = require("@discordjs/voice");
 const { video_info } = require("play-dl");
 
-require("dotenv").config()
+require("dotenv").config();
 
 const {
     createClient,
     retrieveBotInfo,
     createConnection,
     search,
+    searchLyrics,
     parseVideoInfo,
     createResource,
-    sendEmbed
+    sendEmbed,
 } = require("./bot");
+
+//require("./server")();
 
 const client = createClient();
 
-let botName, prefix, helpCommandList = "";
+let botName,
+    prefix,
+    helpCommandList = "";
 
-retrieveBotInfo().then(info => {
+retrieveBotInfo().then((info) => {
     botName = info.get("name");
     prefix = info.get("prefix");
 
-    const parseHelpJSON = json => {
-        const parseArr = arr => {
+    const parseHelpJSON = (json) => {
+        const parseArr = (arr) => {
             result = "";
-            for(const s of arr) {
-                result += `${s}\n`
+            for (const s of arr) {
+                result += `${s}\n`;
             }
             return result;
         };
 
         list = "";
         for (const [key, value] of Object.entries(json)) {
-            list += `${key}: ${parseArr(value)}\n   `
+            list += `${key}: ${parseArr(value)}\n   `;
         }
         return list;
     };
@@ -58,7 +64,7 @@ let subscription;
 
 let queue = [];
 let currentSong = null;
-const emojis = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣"];
+const emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"];
 let showedSongs = [];
 let previouseCommand;
 
@@ -67,7 +73,7 @@ client.on("ready", () => {
     checkIdle();
 });
 
-client.on("messageCreate", async msg => {
+client.on("messageCreate", async (msg) => {
     const content = msg.content;
     const member = msg.member;
     txtChannel = msg.channel;
@@ -78,27 +84,28 @@ client.on("messageCreate", async msg => {
     const args = content.substring(prefix.length).split(" ");
     const command = args[0];
 
-    switch(command) {
-        case "play": {
-            if(!voiceChannel) {
-                sendEmbed(txtChannel, "Devi essere connesso ad un canale vocale", "Red");
-                break;
-            }
+    switch (command) {
+        case "play":
+        case "p": {
+            console.log(
+                `<${msg.author.username}> play ${args.slice(1).join(" ")}`
+            );
 
-            if(!args[1]) {
-                sendEmbed(txtChannel, "Inserisci il nome di un contenuto!", "Red");
-                break;
-            }
+            if (!connectedToVoiceChannel(txtChannel, voiceChannel)) break;
+            if (!isNameGiven(txtChannel, args)) break;
 
             previouseCommand = "play";
-            console.log(`<${msg.author.username}> play ${args.slice(1).join(" ")}`);
 
             try {
-                if(!connection) startConnection();
+                if (!connection) startConnection();
 
                 const videos = await search(args.slice(1).join(" "));
-                if(videos.length == 0) {
-                    sendEmbed(txtChannel, "Non stati trovati risultati...", "Red");
+                if (videos.length == 0) {
+                    sendEmbed(
+                        txtChannel,
+                        "Non stati trovati risultati...",
+                        "Red"
+                    );
                     break;
                 }
 
@@ -107,32 +114,33 @@ client.on("messageCreate", async msg => {
                 const info = await video_info(video.url);
 
                 checkPlayerState(info);
-            } catch(error) {
+            } catch (error) {
                 console.error(error);
             }
 
             break;
         }
-        case "play-c": {
-            if(!voiceChannel) {
-                sendEmbed(txtChannel, "Devi essere connesso ad un canale vocale", "Red");
-                break;
-            }
+        case "play-c":
+        case "pc": {
+            console.log(
+                `<${msg.author.username}> play-c ${args.slice(1).join(" ")}`
+            );
 
-            if(!args[1]) {
-                sendEmbed(txtChannel, "Inserisci il nome di un contenuto!", "Red");
-                break;
-            }
+            if (!connectedToVoiceChannel(txtChannel, voiceChannel)) break;
+            if (!isNameGiven(txtChannel, args)) break;
 
             previouseCommand = "play-c";
-            console.log(`<${msg.author.username}> play-c ${args.slice(1).join(" ")}`);
 
             try {
-                if(!connection) startConnection();
+                if (!connection) startConnection();
 
                 const videos = await search(args.slice(1).join(" "), 5);
-                if(videos.length == 0) {
-                    sendEmbed(txtChannel, "Non stati trovati risultati...", "Red");
+                if (videos.length == 0) {
+                    sendEmbed(
+                        txtChannel,
+                        "Non stati trovati risultati...",
+                        "Red"
+                    );
                     break;
                 }
 
@@ -141,117 +149,144 @@ client.on("messageCreate", async msg => {
                 let videosStr = "";
 
                 videos.forEach((video, index) => {
-                    const authorName = video.author && video.author.name ? video.author.name : "Unknown";
-                    videosStr += `${index + 1}) **${video.title}** by **${authorName}** (${video.duration})\n`;
+                    const authorName =
+                        video.author && video.author.name
+                            ? video.author.name
+                            : "Unknown";
+                    videosStr += `${index + 1}) **${
+                        video.title
+                    }** by **${authorName}** (${video.duration})\n`;
                 });
 
-                sendEmbed(txtChannel, videosStr, "Blue", "Opzioni").then(sentMsg => {
-                    videos.forEach((video, index) => {
-                        sentMsg.react(emojis[index]);
-                    });
-                });
-            } catch(error) {
+                sendEmbed(txtChannel, videosStr, "Blue", "Opzioni").then(
+                    (sentMsg) => {
+                        videos.forEach((video, index) => {
+                            sentMsg.react(emojis[index]);
+                        });
+                    }
+                );
+            } catch (error) {
                 console.error(error);
             }
 
             break;
         }
-        case "play-u": {
-            if(!voiceChannel) {
-                sendEmbed(txtChannel, "Devi essere connesso ad un canale vocale", "Red");
-                break;
-            }
+        case "play-u":
+        case "pu": {
+            console.log(
+                `<${msg.author.username}> play-u ${args.slice(1).join(" ")}`
+            );
 
-            if(!args[1]) {
-                sendEmbed(txtChannel, "Inserisci il nome di un contenuto!", "Red");
-                break;
-            }
+            if (!connectedToVoiceChannel(txtChannel, voiceChannel)) break;
+            if (!isNameGiven(txtChannel, args)) break;
 
             previouseCommand = "play-u";
-            console.log(`<${msg.author.username}> play-u ${args.slice(1).join(" ")}`);
-
 
             try {
-                if(!connection) startConnection();
+                if (!connection) startConnection();
 
                 //eventually decide what track will be played
                 const info = await video_info(args[1]);
                 checkPlayerState(info);
-            } catch(error) {
+            } catch (error) {
                 console.error(error);
             }
 
             break;
         }
+        case "now-playing":
         case "np": {
-            previouseCommand = "np";
             console.log(`<${msg.author.username}> np`);
 
+            previouseCommand = "np";
+
             //check if a song is currently playing
-            if (player && player.state.status === AudioPlayerStatus.Playing && currentSong) {
+            if (
+                player &&
+                player.state.status === AudioPlayerStatus.Playing &&
+                currentSong
+            ) {
                 const parsedInfo = parseVideoInfo(currentSong);
                 sendEmbed(
-                    txtChannel, 
+                    txtChannel,
                     `Now playing **${parsedInfo[0]}** by **${parsedInfo[1]}** (${parsedInfo[2]})`,
                     "Blue",
                     null,
                     currentSong.video_details.thumbnails.at(0).url
                 );
-            } else sendEmbed(txtChannel, "Non c'è nessun contenuto in riproduzione!", "Red");
+            } else
+                sendEmbed(
+                    txtChannel,
+                    "Non c'è nessun contenuto in riproduzione!",
+                    "Red"
+                );
 
             break;
         }
-        case "pause": {
-            if(!voiceChannel) {
-                sendEmbed(txtChannel, "Devi essere connesso ad un canale vocale", "Red");
-                break;
-            }
-
-            previouseCommand = "pause";
+        case "pause":
+        case "ps": {
             console.log(`<${msg.author.username}> pause`);
 
+            if (!connectedToVoiceChannel(txtChannel, voiceChannel)) break;
+
+            previouseCommand = "pause";
 
             //check if a song is currently playing
             if (player && player.state.status === AudioPlayerStatus.Playing) {
                 //pause the current song
                 player.pause();
                 sendEmbed(txtChannel, "Riproduzione messa in pausa!", "Blue");
-            } else sendEmbed(txtChannel, "Non c'è nessun contenuto in riproduzione!", "Red");
+            } else
+                sendEmbed(
+                    txtChannel,
+                    "Non c'è nessun contenuto in riproduzione!",
+                    "Red"
+                );
 
             break;
         }
-        case "unpause": {
-            if(!voiceChannel) {
-                sendEmbed(txtChannel, "Devi essere connesso ad un canale vocale", "Red");
-                break;
-            }
-
-            previouseCommand = "unpause";
+        case "unpause":
+        case "ups": {
             console.log(`<${msg.author.username}> unpause`);
 
+            if (!connectedToVoiceChannel(txtChannel, voiceChannel)) break;
+
+            previouseCommand = "unpause";
+
             //check if a song isn't currently playing and there's a song to play
-            if (player && player.state.status === AudioPlayerStatus.Paused && currentSong) {
+            if (
+                player &&
+                player.state.status === AudioPlayerStatus.Paused &&
+                currentSong
+            ) {
                 //play the current song
                 player.unpause();
                 sendEmbed(txtChannel, "Riproduzione ripresa", "Blue");
-            } else sendEmbed(txtChannel, "Non c'è nessun contenuto in riproduzione!", "Red");
+            } else
+                sendEmbed(
+                    txtChannel,
+                    "Non c'è nessun contenuto in riproduzione!",
+                    "Red"
+                );
 
             break;
         }
-        case "skip": {
-            if(!voiceChannel) {
-                sendEmbed(txtChannel, "Devi essere connesso ad un canale vocale", "Red");
-                break;
-            }
+        case "skip":
+        case "s": {
+            console.log(`<${msg.author.username}> skip`);
 
-            if(!currentSong) {
-                sendEmbed(txtChannel, "Non c'è nessun contenuto da skippare!", "Red");
+            if (!connectedToVoiceChannel(txtChannel, voiceChannel)) break;
+
+            if (!currentSong) {
+                sendEmbed(
+                    txtChannel,
+                    "Non c'è nessun contenuto da skippare!",
+                    "Red"
+                );
                 break;
             }
 
             previouseCommand = "skip";
-            console.log(`<${msg.author.username}> skip`);
-
 
             if (player && player.state.status === AudioPlayerStatus.Playing) {
                 //stop the player
@@ -263,65 +298,108 @@ client.on("messageCreate", async msg => {
 
             break;
         }
-        case "back": {
+        case "back":
+        case "b": {
+            console.log(`<${msg.author.username}> back`);
             break;
         }
-        case "queue": {
-            if(!voiceChannel) {
-                sendEmbed(txtChannel, "Devi essere connesso ad un canale vocale", "Red");
+        case "lyrics":
+        case "l": {
+            console.log(`<${msg.author.username}> lyrics`);
+
+            if (!connectedToVoiceChannel(txtChannel, voiceChannel)) break;
+
+            if (!currentSong) {
+                sendEmbed(
+                    txtChannel,
+                    "Non c'è nessun contenuto di cui cercare le lyrics!",
+                    "Red"
+                );
                 break;
             }
 
-            previouseCommand = "queue";
-            console.log(`<${msg.author.username}> queue`);
-
-
-            if(!currentSong) {
-                sendEmbed(txtChannel, "La coda è vuota!", "Red");
-                return;
-            };
+            previouseCommand = "lyrics";
 
             const parsedInfo = parseVideoInfo(currentSong);
-            let queueStr = `${1}) **${parsedInfo[0]}** by **${parsedInfo[1]}** (${parsedInfo[2]})`;
+            const token =
+                process.env.GENIUS_TOKEN || process.env["GENIUS_TOKEN"];
+
+            searchLyrics(token, parsedInfo[0], parsedInfo[1])
+                .then((lyrics) => {
+                    if (lyrics) sendEmbed(txtChannel, lyrics, "Blue");
+                    else sendEmbed(txtChannel, "Lyrics not found", "Blue");
+                })
+                .catch((error) => {
+                    console.error("Error:", error.message);
+                });
+
+            break;
+        }
+        case "queue":
+        case "q": {
+            console.log(`<${msg.author.username}> queue`);
+
+            if (!connectedToVoiceChannel(txtChannel, voiceChannel)) break;
+
+            previouseCommand = "queue";
+
+            if (!currentSong) {
+                sendEmbed(txtChannel, "La coda è vuota!", "Red");
+                return;
+            }
+
+            const parsedInfo = parseVideoInfo(currentSong);
+            let queueStr = `${1}) **${parsedInfo[0]}** by **${
+                parsedInfo[1]
+            }** (${parsedInfo[2]})`;
 
             queue.forEach((info, index) => {
                 const parsedInfo = parseVideoInfo(info);
-                queueStr += `\n${index + 2}) **${parsedInfo[0]}** by **${parsedInfo[1]}** (${parsedInfo[2]})`;
+                queueStr += `\n${index + 2}) **${parsedInfo[0]}** by **${
+                    parsedInfo[1]
+                }** (${parsedInfo[2]})`;
             });
 
             sendEmbed(txtChannel, queueStr, "Blue", "Queue");
             break;
         }
         case "leave": {
-            if(VoiceConnectionStatus.Disconnected && queue.length != 0) {
-                sendEmbed(txtChannel, "Il bot deve essere all'interno del canale per poterne uscire!", "Red");
+            console.log(`<${msg.author.username}> leave`);
+
+            if (VoiceConnectionStatus.Disconnected && queue.length != 0) {
+                sendEmbed(
+                    txtChannel,
+                    "Il bot deve essere all'interno del canale per poterne uscire!",
+                    "Red"
+                );
                 break;
             }
 
             previouseCommand = "leave";
-            console.log(`<${msg.author.username}> leave`);
 
-            stopConnection();
+            if (stopConnection(txtChannel))
+                sendEmbed(txtChannel, "Lupo è uscito!", "Blue");
 
-            sendEmbed(txtChannel, "Lupo è uscito!", "Blue");
             break;
         }
-        case "help": {
-                previouseCommand = "help";
-                console.log(`<${msg.author.username}> help`);
+        case "help":
+        case "h": {
+            console.log(`<${msg.author.username}> help`);
 
-                sendEmbed(txtChannel, helpCommandList, "Blue", "Comandi");
+            previouseCommand = "help";
+
+            sendEmbed(txtChannel, helpCommandList, "Blue", "Comandi");
             break;
         }
     }
 });
 
 client.on("messageReactionAdd", async (reaction, user) => {
-    if(user.bot || previouseCommand !== "play-c") return;
+    if (user.bot || previouseCommand !== "play-c") return;
 
     let url;
 
-    switch(reaction.emoji.name) {
+    switch (reaction.emoji.name) {
         case emojis[0]: {
             url = showedSongs[0].url;
             break;
@@ -347,7 +425,7 @@ client.on("messageReactionAdd", async (reaction, user) => {
     try {
         const info = await video_info(url);
         checkPlayerState(info);
-    } catch(error) {
+    } catch (error) {
         console.error(error);
     }
 
@@ -357,28 +435,60 @@ client.on("messageReactionAdd", async (reaction, user) => {
     reaction.message.reactions.removeAll().catch(console.error);
 });
 
-
 //finally login
-client.login(process.env.CLIENT_TOKEN || process.env["CLIENT_TOKEN"]);
+client.login(process.env.DISCORD_TOKEN || process.env["DISCORD_TOKEN"]);
 
 //FUNCTIONS
 function startConnection() {
     connection = createConnection(voiceChannel);
     player = createAudioPlayer({
         behaviors: {
-            noSubscriber: NoSubscriberBehavior.Play
-        }
-    })
+            noSubscriber: NoSubscriberBehavior.Play,
+        },
+    });
     subscription = connection.subscribe(player);
-};
+}
 
-function stopConnection() {
-    subscription.unsubscribe();
-    connection.disconnect();
-    connection = null;
-    currentSong = null;
-    queue = [];
-    previouseShow = null;
+function stopConnection(txtChannel) {
+    try {
+        if (!subscription || !connection) {
+            sendEmbed(
+                txtChannel,
+                "Lupo non è connesso a nessun canale vocale",
+                "Red"
+            );
+            return false;
+        }
+        subscription.unsubscribe();
+        connection.disconnect();
+        connection = null;
+        currentSong = null;
+        queue = [];
+        previouseShow = null;
+
+        return true;
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function connectedToVoiceChannel(txtChannel, voiceChannel) {
+    if (!voiceChannel) {
+        sendEmbed(
+            txtChannel,
+            "Devi essere connesso ad un canale vocale",
+            "Red"
+        );
+        return false;
+    } else return true;
+}
+
+function isNameGiven(txtChannel, args) {
+    if (!args[1]) {
+        sendEmbed(txtChannel, "Inserisci il nome di un contenuto!", "Red");
+        return false;
+    }
+    return true;
 }
 
 async function playNextSong() {
@@ -390,9 +500,10 @@ async function playNextSong() {
 
     const info = queue.shift();
 
-    if(info) {
+    if (info) {
         const parsedInfo = parseVideoInfo(info);
-        sendEmbed(txtChannel, 
+        sendEmbed(
+            txtChannel,
             `Now playing **${parsedInfo[0]}** by **${parsedInfo[1]}** (${parsedInfo[2]})`,
             "Blue",
             null,
@@ -402,7 +513,7 @@ async function playNextSong() {
         currentSong = info;
 
         const resource = await createResource(info);
-        if(resource) player.play(resource);
+        if (resource) player.play(resource);
     }
 }
 
@@ -411,16 +522,22 @@ async function checkIdle() {
     let timesChecked = 0;
 
     while (true) {
-        if ((player && player.state.status === AudioPlayerStatus.Idle) && queue && queue.length != 0) {
+        if (
+            player &&
+            player.state.status === AudioPlayerStatus.Idle &&
+            queue &&
+            queue.length != 0
+        ) {
             //song ended, play the next song
             playNextSong();
         }
-        
-        if (player && player.state.status === AudioPlayerStatus.Playing) timesChecked = 0;
+
+        if (player && player.state.status === AudioPlayerStatus.Playing)
+            timesChecked = 0;
 
         //wait for 2 second before checking again
-        await new Promise(resolve => {
-            if(timesChecked == timesToCheck) {
+        await new Promise((resolve) => {
+            if (timesChecked == timesToCheck) {
                 connection.destroy();
                 connection = null;
             }
@@ -433,7 +550,8 @@ async function checkIdle() {
 function checkPlayerState(info) {
     const addToQueue = () => {
         queue.push(info);
-        sendEmbed(txtChannel, 
+        sendEmbed(
+            txtChannel,
             `Added **${info.video_details.title}** to the queue.`,
             "Blue",
             null,
@@ -448,10 +566,9 @@ function checkPlayerState(info) {
 
     //check if a song is currently playing
     if (player.state.status === AudioPlayerStatus.Playing) addToQueue();
-    else if(player.state.status === AudioPlayerStatus.Paused) {
+    else if (player.state.status === AudioPlayerStatus.Paused) {
         //if its paused but theres a song to play
-        if(currentSong) addToQueue();
+        if (currentSong) addToQueue();
         else playSong();
-    }
-    else if(player.state.status === AudioPlayerStatus.Idle) playSong();
+    } else if (player.state.status === AudioPlayerStatus.Idle) playSong();
 }

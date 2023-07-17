@@ -1,13 +1,19 @@
-const { Client, GatewayIntentBits, Partials, EmbedBuilder } = require("discord.js");
+const {
+    Client,
+    GatewayIntentBits,
+    Partials,
+    EmbedBuilder,
+} = require("discord.js");
 const {
     VoiceConnectionStatus,
     createAudioResource,
     joinVoiceChannel,
-    entersState
+    entersState,
 } = require("@discordjs/voice");
 const ytsr = require("ytsr");
 const play = require("play-dl");
 const { readFile } = require("fs");
+const axios = require("axios");
 
 function createClient() {
     return new Client({
@@ -19,19 +25,17 @@ function createClient() {
             GatewayIntentBits.GuildMembers,
             GatewayIntentBits.GuildMessageReactions,
         ],
-        partials: [
-            Partials.Channel,
-            Partials.Message,
-            Partials.GuildMember,
-        ] 
+        partials: [Partials.Channel, Partials.Message, Partials.GuildMember],
     });
 }
 
 async function retrieveBotInfo() {
     return new Promise((resolve, reject) => {
         readFile("./src/bot-config.json", "utf-8", (error, data) => {
-            if(error) {
-                console.error(`Error while reading the bot-config.json file... ${error}`);
+            if (error) {
+                console.error(
+                    `Error while reading the bot-config.json file... ${error}`
+                );
                 reject(error);
             }
             const map = new Map();
@@ -53,36 +57,50 @@ function createConnection(voiceChannel) {
             channelId: voiceChannel.id,
             guildId: voiceChannel.guild.id,
             adapterCreator: voiceChannel.guild.voiceAdapterCreator,
-            selfDeaf: true
+            selfDeaf: true,
         });
 
         connection.on(VoiceConnectionStatus.Ready, () => {
             console.log("[+]Voice connection is ready!");
         });
-    
-        connection.on(VoiceConnectionStatus.Disconnected, async (oldState, newState) => {
-            console.log("[-]Voice connection has been disconnected!");
-            try {
-                await Promise.race([
-                    entersState(connection, VoiceConnectionStatus.Signalling, 5000),
-                    entersState(connection, VoiceConnectionStatus.Connecting, 5000),
-                ]);
-                //seems to be reconnecting to a new channel - ignore disconnect
-            } catch (error) {
-                //seems to be a real disconnect which SHOULDN'T be recovered from
-                connection.destroy();
-                connection = null;
-            }
-        });
 
-        connection.on(VoiceConnectionStatus.Destroyed, async (oldState, newState) => {
-            console.log("[-]Voice connection has been destroyed!");
-        });
-    
-        connection.on("error", error => {
+        connection.on(
+            VoiceConnectionStatus.Disconnected,
+            async (oldState, newState) => {
+                console.log("[-]Voice connection has been disconnected!");
+                try {
+                    await Promise.race([
+                        entersState(
+                            connection,
+                            VoiceConnectionStatus.Signalling,
+                            5000
+                        ),
+                        entersState(
+                            connection,
+                            VoiceConnectionStatus.Connecting,
+                            5000
+                        ),
+                    ]);
+                    //seems to be reconnecting to a new channel - ignore disconnect
+                } catch (error) {
+                    //seems to be a real disconnect which SHOULDN'T be recovered from
+                    connection.destroy();
+                    connection = null;
+                }
+            }
+        );
+
+        connection.on(
+            VoiceConnectionStatus.Destroyed,
+            async (oldState, newState) => {
+                console.log("[-]Voice connection has been destroyed!");
+            }
+        );
+
+        connection.on("error", (error) => {
             console.error(`[-]ERROR ON CONNECTION: ${error}`);
         });
-    } catch(error) {
+    } catch (error) {
         console.error(error);
     }
 
@@ -91,35 +109,84 @@ function createConnection(voiceChannel) {
 
 async function search(query, limit = 1, type = "video") {
     const options = {
-        limit: limit
+        limit: limit,
     };
     const searchResults = await ytsr(query, options);
 
     //filter items with type "video"
-    const filteredResults = searchResults.items.filter(item => {
-        if(item.type === type) return item;
+    const filteredResults = searchResults.items.filter((item) => {
+        if (item.type === type) return item;
     });
 
     if (!filteredResults.length) return null;
     return filteredResults;
 }
 
-function parseVideoInfo(info) {
-    const title = info.video_details.title;
-    const channel = info.video_details.channel;
-    const duration = info.video_details.durationRaw;
+async function searchLyrics(token, title, artist) {
+    try {
+        const response = await axios.get(
+            `https://api.genius.com/search?q=${artist} ${title}`,
+            {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            }
+        );
 
-    return [title, channel, duration];
+        const firstResult = response.data.response.hits[0];
+
+        if (firstResult) {
+            const id = firstResult.result.id;
+            const lyricsResponse = await axios.get(
+                `https://api.genius.com/songs/${id}`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            return lyricsResponse.data.response.song.url;
+        } else {
+            throw new Error("Lyrics not found.");
+        }
+    } catch (error) {
+        console.error("Error fetching lyrics:", error.message);
+        return null;
+    }
+}
+
+function parseVideoInfo(info) {
+    try {
+        let title = null,
+            artist = null;
+        let duration = info.video_details.durationRaw;
+
+        const music = info.video_details.music[0];
+
+        if (music && music.length != 0) {
+            title = music.song;
+            artist = music.artist;
+        } else {
+            title = info.video_details.title;
+            artist = info.video_details.channel.name;
+        }
+
+        return [title, artist, duration];
+    } catch (e) {
+        console.error(e);
+        return [null, null, null];
+    }
 }
 
 async function createResource(info) {
     try {
         const stream = await play.stream_from_info(info);
         const resource = createAudioResource(stream.stream, {
-            inputType: stream.type
+            inputType: stream.type,
         });
         return resource;
-    } catch(error) {
+    } catch (error) {
         console.error(error);
     }
 }
@@ -129,21 +196,22 @@ function sendEmbed(txtChannel, description, color, title = null, url = null) {
         const embed = new EmbedBuilder();
         embed.setDescription(description);
         embed.setColor(color);
-    
-        if(title) embed.setTitle(title);
-        if(url) embed.setThumbnail(url);
-        if(title && url) {
+
+        if (title) embed.setTitle(title);
+        if (url) embed.setThumbnail(url);
+        if (title && url) {
             embed.setTitle(title);
             embed.setThumbnail(url);
         }
 
-        txtChannel.send({ embeds: [embed] })
-        .then(sentMsg => {
-            resolve(sentMsg);
-        })
-        .catch(error => {
-            reject(error);
-        });
+        txtChannel
+            .send({ embeds: [embed] })
+            .then((sentMsg) => {
+                resolve(sentMsg);
+            })
+            .catch((error) => {
+                reject(error);
+            });
     });
 }
 
@@ -152,7 +220,8 @@ module.exports = {
     retrieveBotInfo,
     createConnection,
     search,
+    searchLyrics,
     parseVideoInfo,
     createResource,
-    sendEmbed
+    sendEmbed,
 };
