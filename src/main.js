@@ -25,7 +25,7 @@ const {
     sendEmbed,
 } = require("./bot");
 
-//require("./server")();
+require("./server")(8888);
 
 const client = createClient();
 

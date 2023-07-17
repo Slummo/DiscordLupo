@@ -23,4 +23,4 @@ function startServer(port) {
         });
 }
 
-module.exports = createServer;
+module.exports = startServer;
