@@ -19,7 +19,7 @@ function startServer(port) {
             });
         })
         .listen(port, () => {
-            console.log(`Server listening on port ${port}`);
+            console.log(`[+]Server listening on port ${port}`);
         });
 }
 
