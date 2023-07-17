@@ -98,7 +98,7 @@ client.on("messageCreate", async (msg) => {
                 if (!connection) startConnection();
 
                 const videos = await search(args.slice(1).join(" "));
-                if (videos.length == 0) {
+                if (!videos || videos.length == 0) {
                     sendEmbed(
                         txtChannel,
                         "Non stati trovati risultati...",
@@ -133,7 +133,7 @@ client.on("messageCreate", async (msg) => {
                 if (!connection) startConnection();
 
                 const videos = await search(args.slice(1).join(" "), 5);
-                if (videos.length == 0) {
+                if (!videos || videos.length == 0) {
                     sendEmbed(
                         txtChannel,
                         "Non stati trovati risultati...",
