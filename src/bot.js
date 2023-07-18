@@ -15,6 +15,8 @@ const play = require("play-dl");
 const { readFile } = require("fs");
 const axios = require("axios");
 
+const printDebugMessage = require("./debug");
+
 function createClient() {
     return new Client({
         intents: [
@@ -33,9 +35,7 @@ async function retrieveBotInfo() {
     return new Promise((resolve, reject) => {
         readFile("./src/bot-config.json", "utf-8", (error, data) => {
             if (error) {
-                console.error(
-                    `Error while reading the bot-config.json file... ${error}`
-                );
+                printDebugMessage(error.message, true);
                 reject(error);
             }
             const map = new Map();
@@ -61,13 +61,16 @@ function createConnection(voiceChannel) {
         });
 
         connection.on(VoiceConnectionStatus.Ready, () => {
-            console.log("[+]Voice connection is ready!");
+            printDebugMessage("Voice connection is ready!", false);
         });
 
         connection.on(
             VoiceConnectionStatus.Disconnected,
             async (oldState, newState) => {
-                console.log("[-]Voice connection has been disconnected!");
+                printDebugMessage(
+                    "[-]Voice connection has been disconnected!",
+                    false
+                );
                 try {
                     await Promise.race([
                         entersState(
@@ -93,15 +96,18 @@ function createConnection(voiceChannel) {
         connection.on(
             VoiceConnectionStatus.Destroyed,
             async (oldState, newState) => {
-                console.log("[-]Voice connection has been destroyed!");
+                printDebugMessage(
+                    "[-]Voice connection has been destroyed!",
+                    false
+                );
             }
         );
 
         connection.on("error", (error) => {
-            console.error(`[-]ERROR ON CONNECTION: ${error}`);
+            printDebugMessage(error.message, true);
         });
     } catch (error) {
-        console.error(error);
+        printDebugMessage(error.message, true);
     }
 
     return connection;
@@ -147,12 +153,10 @@ async function searchLyrics(token, title, artist) {
             );
 
             return lyricsResponse.data.response.song.url;
-        } else {
-            throw new Error("Lyrics not found.");
         }
-    } catch (error) {
-        console.error("Error fetching lyrics:", error.message);
         return null;
+    } catch (error) {
+        printDebugMessage(error.message, true);
     }
 }
 
@@ -173,8 +177,8 @@ function parseVideoInfo(info) {
         }
 
         return [title, artist, duration];
-    } catch (e) {
-        console.error(e);
+    } catch (error) {
+        printDebugMessage(error.message, true);
         return [null, null, null];
     }
 }
@@ -187,7 +191,7 @@ async function createResource(info) {
         });
         return resource;
     } catch (error) {
-        console.error(error);
+        printDebugMessage(error.message, true);
     }
 }
 

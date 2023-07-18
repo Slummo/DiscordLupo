@@ -1,6 +1,8 @@
 const http = require("http");
 const fs = require("fs");
 
+const printDebugMessage = require("./debug");
+
 function startServer(port) {
     return http
         .createServer((req, res) => {
@@ -19,7 +21,7 @@ function startServer(port) {
             });
         })
         .listen(port, () => {
-            console.log(`[+]Server listening on port ${port}`);
+            printDebugMessage(`Server listening on port ${port}`);
         });
 }
 

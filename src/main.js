@@ -1,11 +1,11 @@
+//Fix new logic (skip when queue has ended ecc...)
 //TODO add playlists support
 //TODO add Spotify links support for both songs and playlists (search module) https://developer.spotify.com/dashboard
-//TODO add back, shuffle, jump commands for queueing songs
+//TODO add shuffle, jump commands for queueing songs
 
 const {
     AudioPlayerStatus,
     NoSubscriberBehavior,
-    VoiceConnectionStatus,
     createAudioPlayer,
 } = require("@discordjs/voice");
 const { video_info } = require("play-dl");
@@ -25,50 +25,58 @@ const {
 
 require("./server")(8888);
 
+const Queue = require("./queue");
+
+const printDebugMessage = require("./debug");
+
 const client = createClient();
 
 let botName,
     prefix,
     helpCommandList = "";
 
-retrieveBotInfo().then((info) => {
-    botName = info.get("name");
-    prefix = info.get("prefix");
+retrieveBotInfo()
+    .then((info) => {
+        botName = info.get("name");
+        prefix = info.get("prefix");
 
-    const parseHelpJSON = (json) => {
-        const parseArr = (arr) => {
-            result = "";
-            for (const s of arr) {
-                result += `${s}\n`;
+        const parseHelpJSON = (json) => {
+            const parseArr = (arr) => {
+                result = "";
+                for (const s of arr) {
+                    result += `${s}\n`;
+                }
+                return result;
+            };
+
+            list = "";
+            for (const [key, value] of Object.entries(json)) {
+                list += `${key}: ${parseArr(value)}\n   `;
             }
-            return result;
+            return list;
         };
 
-        list = "";
-        for (const [key, value] of Object.entries(json)) {
-            list += `${key}: ${parseArr(value)}\n   `;
-        }
-        return list;
-    };
+        helpCommandList = parseHelpJSON(info.get("help"));
+    })
+    .catch((error) => {
+        printDebugMessage(error.message, true);
+    });
 
-    helpCommandList = parseHelpJSON(info.get("help"));
-});
-
+let args;
 let txtChannel;
 let voiceChannel;
 let connection;
 let player;
 let subscription;
 
-let queue = [];
-let currentSong = null;
+let queue = new Queue();
 const emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"];
 let showedSongs = [];
 let previouseCommand;
 
 client.on("ready", () => {
-    console.log(`[+]${botName} started!`);
-    checkIdle();
+    printDebugMessage(`${botName} started!`, false);
+    checkStatus();
 });
 
 client.on("messageCreate", async (msg) => {
@@ -79,18 +87,20 @@ client.on("messageCreate", async (msg) => {
 
     if (!content.startsWith(prefix) || msg.author.bot) return;
 
-    const args = content.substring(prefix.length).split(" ");
+    args = content.substring(prefix.length).split(" ");
+
     const command = args[0];
 
     switch (command) {
         case "play":
         case "p": {
-            console.log(
-                `<${msg.author.username}> play ${args.slice(1).join(" ")}`
+            printDebugMessage(
+                `<${msg.author.username}> play ${args.slice(1).join(" ")}`,
+                false
             );
 
-            if (!connectedToVoiceChannel(txtChannel, voiceChannel)) break;
-            if (!isNameGiven(txtChannel, args)) break;
+            if (!connectedToVoiceChannel()) break;
+            if (!isNameGiven()) break;
 
             previouseCommand = "play";
 
@@ -98,34 +108,28 @@ client.on("messageCreate", async (msg) => {
                 if (!connection) startConnection();
 
                 const videos = await search(args.slice(1).join(" "));
-                if (!videos || videos.length == 0) {
-                    sendEmbed(
-                        txtChannel,
-                        "Non stati trovati risultati...",
-                        "Red"
-                    );
-                    break;
-                }
+                checkVideos(videos);
 
                 //eventually decide what track will be played
                 const video = videos[0];
                 const info = await video_info(video.url);
 
-                checkPlayerState(info);
+                queue.add(info, txtChannel);
             } catch (error) {
-                console.error(error);
+                printDebugMessage(error.message, true);
             }
 
             break;
         }
         case "play-c":
         case "pc": {
-            console.log(
-                `<${msg.author.username}> play-c ${args.slice(1).join(" ")}`
+            printDebugMessage(
+                `<${msg.author.username}> play-c ${args.slice(1).join(" ")}`,
+                false
             );
 
-            if (!connectedToVoiceChannel(txtChannel, voiceChannel)) break;
-            if (!isNameGiven(txtChannel, args)) break;
+            if (!connectedToVoiceChannel()) break;
+            if (!isNameGiven()) break;
 
             previouseCommand = "play-c";
 
@@ -133,14 +137,7 @@ client.on("messageCreate", async (msg) => {
                 if (!connection) startConnection();
 
                 const videos = await search(args.slice(1).join(" "), 5);
-                if (!videos || videos.length == 0) {
-                    sendEmbed(
-                        txtChannel,
-                        "Non stati trovati risultati...",
-                        "Red"
-                    );
-                    break;
-                }
+                checkVideos(videos);
 
                 showedSongs = videos;
 
@@ -164,19 +161,20 @@ client.on("messageCreate", async (msg) => {
                     }
                 );
             } catch (error) {
-                console.error(error);
+                printDebugMessage(error.message, true);
             }
 
             break;
         }
         case "play-u":
         case "pu": {
-            console.log(
-                `<${msg.author.username}> play-u ${args.slice(1).join(" ")}`
+            printDebugMessage(
+                `<${msg.author.username}> play-u ${args.slice(1).join(" ")}`,
+                false
             );
 
-            if (!connectedToVoiceChannel(txtChannel, voiceChannel)) break;
-            if (!isNameGiven(txtChannel, args)) break;
+            if (!connectedToVoiceChannel()) break;
+            if (!isNameGiven()) break;
 
             previouseCommand = "play-u";
 
@@ -185,20 +183,21 @@ client.on("messageCreate", async (msg) => {
 
                 //eventually decide what track will be played
                 const info = await video_info(args[1]);
-                checkPlayerState(info);
+                queue.add(info, txtChannel);
             } catch (error) {
-                console.error(error);
+                printDebugMessage(error.message, true);
             }
 
             break;
         }
         case "now-playing":
         case "np": {
-            console.log(`<${msg.author.username}> np`);
+            printDebugMessage(`<${msg.author.username}> np`, false);
 
             previouseCommand = "np";
 
             //check if a song is currently playing
+            let currentSong = queue.getCurrentSong();
             if (
                 player &&
                 player.state.status === AudioPlayerStatus.Playing &&
@@ -223,9 +222,9 @@ client.on("messageCreate", async (msg) => {
         }
         case "pause":
         case "ps": {
-            console.log(`<${msg.author.username}> pause`);
+            printDebugMessage(`<${msg.author.username}> pause`, false);
 
-            if (!connectedToVoiceChannel(txtChannel, voiceChannel)) break;
+            if (!connectedToVoiceChannel()) break;
 
             previouseCommand = "pause";
 
@@ -245,9 +244,9 @@ client.on("messageCreate", async (msg) => {
         }
         case "unpause":
         case "ups": {
-            console.log(`<${msg.author.username}> unpause`);
+            printDebugMessage(`<${msg.author.username}> unpause`, false);
 
-            if (!connectedToVoiceChannel(txtChannel, voiceChannel)) break;
+            if (!connectedToVoiceChannel()) break;
 
             previouseCommand = "unpause";
 
@@ -255,7 +254,7 @@ client.on("messageCreate", async (msg) => {
             if (
                 player &&
                 player.state.status === AudioPlayerStatus.Paused &&
-                currentSong
+                queue.getCurrentSong()
             ) {
                 //play the current song
                 player.unpause();
@@ -271,11 +270,11 @@ client.on("messageCreate", async (msg) => {
         }
         case "skip":
         case "s": {
-            console.log(`<${msg.author.username}> skip`);
+            printDebugMessage(`<${msg.author.username}> skip`, false);
 
-            if (!connectedToVoiceChannel(txtChannel, voiceChannel)) break;
+            if (!connectedToVoiceChannel()) break;
 
-            if (!currentSong) {
+            if (!queue.getCurrentSong()) {
                 sendEmbed(
                     txtChannel,
                     "Non c'è nessun contenuto da skippare!",
@@ -291,23 +290,44 @@ client.on("messageCreate", async (msg) => {
                 player.stop();
 
                 //skip to the next song in the queue
-                playNextSong();
+                queue.skip();
             }
 
             break;
         }
         case "back":
         case "b": {
-            console.log(`<${msg.author.username}> back`);
+            printDebugMessage(`<${msg.author.username}> back`, false);
+
+            if (!connectedToVoiceChannel()) break;
+
+            if (!queue.getCurrentSong()) {
+                sendEmbed(
+                    txtChannel,
+                    "Non c'è nessun contenuto per poter tornare indietro!",
+                    "Red"
+                );
+                break;
+            }
+
+            previouseCommand = "back";
+
+            if (player && player.state.status === AudioPlayerStatus.Playing) {
+                //stop the player
+                player.stop();
+
+                //skip to the next song in the queue
+                queue.back();
+            }
             break;
         }
         case "lyrics":
         case "l": {
-            console.log(`<${msg.author.username}> lyrics`);
+            printDebugMessage(`<${msg.author.username}> lyrics`, false);
 
-            if (!connectedToVoiceChannel(txtChannel, voiceChannel)) break;
+            if (!connectedToVoiceChannel()) break;
 
-            if (!currentSong) {
+            if (!queue.getCurrentSong()) {
                 sendEmbed(
                     txtChannel,
                     "Non c'è nessun contenuto di cui cercare le lyrics!",
@@ -318,7 +338,7 @@ client.on("messageCreate", async (msg) => {
 
             previouseCommand = "lyrics";
 
-            const parsedInfo = parseVideoInfo(currentSong);
+            const parsedInfo = parseVideoInfo(queue.getCurrentSong());
             const token =
                 process.env.GENIUS_TOKEN || process.env["GENIUS_TOKEN"];
 
@@ -328,50 +348,25 @@ client.on("messageCreate", async (msg) => {
                     else sendEmbed(txtChannel, "Lyrics not found", "Blue");
                 })
                 .catch((error) => {
-                    console.error("Error:", error.message);
+                    printDebugMessage(error.message, true);
                 });
 
             break;
         }
         case "queue":
         case "q": {
-            console.log(`<${msg.author.username}> queue`);
+            printDebugMessage(`<${msg.author.username}> queue`, false);
 
-            if (!connectedToVoiceChannel(txtChannel, voiceChannel)) break;
+            if (!connectedToVoiceChannel()) break;
 
             previouseCommand = "queue";
 
-            if (!currentSong) {
-                sendEmbed(txtChannel, "La coda è vuota!", "Red");
-                return;
-            }
+            queue.print(txtChannel);
 
-            const parsedInfo = parseVideoInfo(currentSong);
-            let queueStr = `${1}) **${parsedInfo[0]}** by **${
-                parsedInfo[1]
-            }** (${parsedInfo[2]})`;
-
-            queue.forEach((info, index) => {
-                const parsedInfo = parseVideoInfo(info);
-                queueStr += `\n${index + 2}) **${parsedInfo[0]}** by **${
-                    parsedInfo[1]
-                }** (${parsedInfo[2]})`;
-            });
-
-            sendEmbed(txtChannel, queueStr, "Blue", "Queue");
             break;
         }
         case "leave": {
-            console.log(`<${msg.author.username}> leave`);
-
-            if (VoiceConnectionStatus.Disconnected && queue.length != 0) {
-                sendEmbed(
-                    txtChannel,
-                    "Il bot deve essere all'interno del canale per poterne uscire!",
-                    "Red"
-                );
-                break;
-            }
+            printDebugMessage(`<${msg.author.username}> leave`, false);
 
             previouseCommand = "leave";
 
@@ -382,7 +377,7 @@ client.on("messageCreate", async (msg) => {
         }
         case "help":
         case "h": {
-            console.log(`<${msg.author.username}> help`);
+            printDebugMessage(`<${msg.author.username}> help`, false);
 
             previouseCommand = "help";
 
@@ -422,15 +417,17 @@ client.on("messageReactionAdd", async (reaction, user) => {
 
     try {
         const info = await video_info(url);
-        checkPlayerState(info);
+        queue.add(info, txtChannel);
     } catch (error) {
-        console.error(error);
+        printDebugMessage(error.message, true);
     }
 
     previouseCommand = "";
 
     // Remove all reactions from the message
-    reaction.message.reactions.removeAll().catch(console.error);
+    reaction.message.reactions
+        .removeAll()
+        .catch((error) => printDebugMessage(error.message, true));
 });
 
 //finally login
@@ -460,17 +457,16 @@ function stopConnection(txtChannel) {
         subscription.unsubscribe();
         connection.disconnect();
         connection = null;
-        currentSong = null;
-        queue = [];
+        queue.clear();
         previouseShow = null;
 
         return true;
-    } catch (e) {
-        console.error(e);
+    } catch (error) {
+        printDebugMessage(error.message, true);
     }
 }
 
-function connectedToVoiceChannel(txtChannel, voiceChannel) {
+function connectedToVoiceChannel() {
     if (!voiceChannel) {
         sendEmbed(
             txtChannel,
@@ -481,7 +477,7 @@ function connectedToVoiceChannel(txtChannel, voiceChannel) {
     } else return true;
 }
 
-function isNameGiven(txtChannel, args) {
+function isNameGiven() {
     if (!args[1]) {
         sendEmbed(txtChannel, "Inserisci il nome di un contenuto!", "Red");
         return false;
@@ -489,16 +485,14 @@ function isNameGiven(txtChannel, args) {
     return true;
 }
 
-async function playNextSong() {
-    if (queue.length == 0) {
-        sendEmbed(txtChannel, "La coda è vuota", "Red");
-        currentSong = null;
-        return;
+function checkVideos(videos) {
+    if (!videos || videos.length == 0) {
+        sendEmbed(txtChannel, "Non stati trovati risultati...", "Red");
     }
+}
 
-    const info = queue.shift();
-
-    if (info) {
+async function playSong(info) {
+    try {
         const parsedInfo = parseVideoInfo(info);
         sendEmbed(
             txtChannel,
@@ -508,14 +502,14 @@ async function playNextSong() {
             info.video_details.thumbnails.at(0).url
         );
 
-        currentSong = info;
-
         const resource = await createResource(info);
         if (resource) player.play(resource);
+    } catch (error) {
+        printDebugMessage(error.message, true);
     }
 }
 
-async function checkIdle() {
+async function checkStatus() {
     //450 times every 2 seconds = 15 minutes of idle
     const timesToCheck = 450;
     let timesChecked = 0;
@@ -525,10 +519,10 @@ async function checkIdle() {
             player &&
             player.state.status === AudioPlayerStatus.Idle &&
             queue &&
-            queue.length != 0
+            queue.getCurrentSong()
         ) {
-            //song ended, play the next song
-            playNextSong();
+            const info = queue.getCurrentSong();
+            playSong(info);
         }
 
         if (player && player.state.status === AudioPlayerStatus.Playing)
@@ -547,30 +541,4 @@ async function checkIdle() {
             timesChecked += 1;
         });
     }
-}
-
-function checkPlayerState(info) {
-    const addToQueue = () => {
-        queue.push(info);
-        sendEmbed(
-            txtChannel,
-            `Added **${info.video_details.title}** to the queue.`,
-            "Blue",
-            null,
-            info.video_details.thumbnails.at(0).url
-        );
-    };
-
-    const playSong = () => {
-        queue.push(info);
-        playNextSong();
-    };
-
-    //check if a song is currently playing
-    if (player.state.status === AudioPlayerStatus.Playing) addToQueue();
-    else if (player.state.status === AudioPlayerStatus.Paused) {
-        //if its paused but theres a song to play
-        if (currentSong) addToQueue();
-        else playSong();
-    } else if (player.state.status === AudioPlayerStatus.Idle) playSong();
 }
