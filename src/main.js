@@ -516,6 +516,7 @@ async function playNextSong() {
 }
 
 async function checkIdle() {
+    //450 times every 2 seconds = 15 minutes of idle
     const timesToCheck = 450;
     let timesChecked = 0;
 
@@ -536,8 +537,11 @@ async function checkIdle() {
         //wait for 2 second before checking again
         await new Promise((resolve) => {
             if (timesChecked == timesToCheck) {
-                connection.destroy();
-                connection = null;
+                if (connection) {
+                    connection.destroy();
+                    connection = null;
+                }
+                timesChecked = 0;
             }
             setTimeout(resolve, 2000);
             timesChecked += 1;
